@@ -1,4 +1,8 @@
-"""Deterministic verifiers. A verifier sees the workspace and claims, never the builder's reasoning."""
+"""Deterministic verifiers. A verifier sees the workspace and claims, never the builder's reasoning.
+
+Every path is resolved before it is checked. A path that resolves outside the
+workspace, including through a symbolic link, fails verification.
+"""
 
 from __future__ import annotations
 
@@ -20,19 +24,29 @@ class Verifier(Protocol):
     def check(self, workspace: Path, claims: list[Claim]) -> Verdict: ...
 
 
+def resolve_inside(workspace: Path, rel: str) -> Path | None:
+    """Return the resolved path if it lies inside the workspace, else None."""
+    root = workspace.resolve()
+    candidate = (root / rel).resolve()
+    return candidate if candidate.is_relative_to(root) else None
+
+
 class FileExistsVerifier:
-    """Passes when every relative path listed in the claim's value exists under the workspace."""
+    """Passes when every relative path listed in the claim's value is a file inside the workspace."""
 
     def check(self, workspace: Path, claims: list[Claim]) -> Verdict:
         for claim in claims:
             for rel in claim.value:
-                if not (workspace / rel).is_file():
+                target = resolve_inside(workspace, rel)
+                if target is None:
+                    return Verdict(False, f"path escapes workspace: {rel}")
+                if not target.is_file():
                     return Verdict(False, f"missing file: {rel}")
         return Verdict(True, "all files exist")
 
 
 class JsonFieldVerifier:
-    """Passes when a JSON file has the expected value at a top-level key."""
+    """Passes when a JSON file inside the workspace has the expected value at a top-level key."""
 
     def __init__(self, path: str, field: str, expected: object) -> None:
         self.path = path
@@ -40,7 +54,9 @@ class JsonFieldVerifier:
         self.expected = expected
 
     def check(self, workspace: Path, claims: list[Claim]) -> Verdict:
-        target = workspace / self.path
+        target = resolve_inside(workspace, self.path)
+        if target is None:
+            return Verdict(False, f"path escapes workspace: {self.path}")
         if not target.is_file():
             return Verdict(False, f"missing file: {self.path}")
         try:
