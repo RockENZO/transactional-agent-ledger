@@ -19,4 +19,4 @@ packages = ["src/agent_ledger"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]

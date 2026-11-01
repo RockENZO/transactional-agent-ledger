@@ -68,3 +68,25 @@ class JsonFieldVerifier:
         if data[self.field] != self.expected:
             return Verdict(False, f"{self.field!r} is {data[self.field]!r}, expected {self.expected!r}")
         return Verdict(True, f"{self.field!r} matches")
+
+
+class ExpectedStateVerifier:
+    """Passes when each path holds the expected text, or is absent when the expected value is None."""
+
+    def __init__(self, expected: dict[str, str | None]) -> None:
+        self.expected = expected
+
+    def check(self, workspace: Path, claims: list[Claim]) -> Verdict:
+        for rel, want in self.expected.items():
+            target = resolve_inside(workspace, rel)
+            if target is None:
+                return Verdict(False, f"path escapes workspace: {rel}")
+            if want is None:
+                if target.exists() or target.is_symlink():
+                    return Verdict(False, f"should be deleted: {rel}")
+                continue
+            if not target.is_file():
+                return Verdict(False, f"missing file: {rel}")
+            if target.read_text(encoding="utf-8") != want:
+                return Verdict(False, f"wrong content: {rel}")
+        return Verdict(True, "expected state reached")
