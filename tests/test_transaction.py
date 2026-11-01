@@ -174,7 +174,8 @@ def test_step_deleting_workspace_is_restored(tmp_path: Path) -> None:
     assert (ws / "keep.txt").read_text() == "precious"
 
 
-def test_keyboard_interrupt_restores_and_propagates(tmp_path: Path) -> None:
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_keyboard_interrupt_restores_and_propagates(tmp_path: Path, interruption) -> None:
     ws = tmp_path / "ws"
     ws.mkdir()
     _write(ws, "a.txt", "before")
@@ -182,9 +183,9 @@ def test_keyboard_interrupt_restores_and_propagates(tmp_path: Path) -> None:
 
     def step(w: Path):
         _write(w, "a.txt", "half-done")
-        raise KeyboardInterrupt
+        raise interruption
 
-    with pytest.raises(KeyboardInterrupt):
+    with pytest.raises(interruption):
         run_step(ledger, ws, step, FileExistsVerifier())
 
     assert (ws / "a.txt").read_text() == "before"
@@ -197,4 +198,33 @@ def test_ledger_inside_workspace_is_refused(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="outside the workspace"):
         run_step(ledger, ws, lambda w: [], FileExistsVerifier())
+    ledger.close()
+
+
+def test_success_removes_snapshot(tmp_path, monkeypatch):
+    import agent_ledger.transaction as transaction
+    snapshot_root = tmp_path / "snapshot"
+    snapshot_root.mkdir()
+    monkeypatch.setattr(transaction.tempfile, "mkdtemp", lambda **kw: str(snapshot_root))
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = run_step(Ledger(), ws, lambda w: [], FileExistsVerifier())
+    assert result.committed
+    assert not snapshot_root.exists()
+
+
+def test_finalize_failure_is_atomic_and_restores_workspace(tmp_path):
+    import sqlite3
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "keep").write_text("before")
+    ledger = Ledger()
+    ledger._db.execute("CREATE TRIGGER fail_second BEFORE UPDATE ON claims WHEN NEW.id = 2 AND NEW.status = 'committed' BEGIN SELECT RAISE(ABORT, 'injected update failure'); END")
+    def step(w):
+        (w / "keep").write_text("after")
+        return [("one", ["keep"], {}), ("two", ["keep"], {})]
+    with pytest.raises(sqlite3.IntegrityError, match="injected"):
+        run_step(ledger, ws, step, FileExistsVerifier())
+    assert (ws / "keep").read_text() == "before"
+    assert not ledger.committed()
     ledger.close()

@@ -66,6 +66,7 @@ def run_step(
     snapshot = snapshot_root / "ws"
     shutil.copytree(workspace, snapshot, symlinks=True)
     restored = False
+    committed = False
     try:
         ids: list[int] = []
         try:
@@ -85,6 +86,7 @@ def run_step(
 
         if verdict.ok:
             ledger.finalize(ids, ClaimStatus.COMMITTED, verdict.reason)
+            committed = True
             return StepResult(True, verdict, ids)
 
         _restore(workspace, snapshot)
@@ -98,5 +100,5 @@ def run_step(
             restored = True
         raise
     finally:
-        if restored:
+        if restored or committed:
             shutil.rmtree(snapshot_root, ignore_errors=True)
