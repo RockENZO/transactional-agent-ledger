@@ -82,7 +82,9 @@ class ExpectedStateVerifier:
             if target is None:
                 return Verdict(False, f"path escapes workspace: {rel}")
             if want is None:
-                if target.exists() or target.is_symlink():
+                # Check the entry itself, not its target: a dangling symlink still exists.
+                entry = workspace.resolve() / rel
+                if entry.exists() or entry.is_symlink() or target.exists():
                     return Verdict(False, f"should be deleted: {rel}")
                 continue
             if not target.is_file():

@@ -21,3 +21,16 @@ def test_harness_self_test_metrics(tmp_path, capsys) -> None:
     # Single-output tasks get no change from the partial agent; rename and concat are cut short.
     assert report["partial"]["ledger"]["committed"] == 0
     assert report["partial"]["ledger"]["rollbacks"] == 20
+
+
+def test_dangling_symlink_at_deleted_path_is_rejected(tmp_path) -> None:
+    import os
+    from agent_ledger import ExpectedStateVerifier
+    from agent_ledger.ledger import Claim, ClaimStatus
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    os.symlink("missing.txt", ws / "draft.txt")
+    (ws / "final.txt").write_text("done")
+    verdict = ExpectedStateVerifier({"draft.txt": None, "final.txt": "done"}).check(ws, [])
+    assert not verdict.ok
+    assert "should be deleted: draft.txt" in verdict.reason
