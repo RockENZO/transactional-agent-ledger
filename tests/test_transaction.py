@@ -1,4 +1,5 @@
 import os
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -228,3 +229,48 @@ def test_finalize_failure_is_atomic_and_restores_workspace(tmp_path):
     assert (ws / "keep").read_text() == "before"
     assert not ledger.committed()
     ledger.close()
+
+
+def test_workspace_root_replaced_by_symlink_is_rejected(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    _write(ws, "keep.txt", "precious")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "host.txt").write_text("host")
+    ledger = Ledger()
+
+    def step(w: Path):
+        import shutil
+        shutil.rmtree(w)
+        os.symlink(outside, w)
+        return [("files", ["host.txt"], {})]
+
+    result = run_step(ledger, ws, step, FileExistsVerifier())
+
+    assert not result.committed
+    assert "workspace root was replaced" in result.verdict.reason
+    assert not ws.is_symlink()
+    assert (ws / "keep.txt").read_text() == "precious"
+
+
+def test_tmpdir_inside_workspace_is_refused(tmp_path: Path, monkeypatch) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(ws))
+    with pytest.raises(ValueError, match="temporary directory"):
+        run_step(Ledger(), ws, lambda w: [], FileExistsVerifier())
+    assert not any(p.name.startswith("ledger-snap-") for p in ws.iterdir())
+
+
+def test_relative_ledger_path_is_anchored_at_open(tmp_path: Path, monkeypatch) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    monkeypatch.chdir(ws)
+    ledger = Ledger("task.db")
+    monkeypatch.chdir(tmp_path)
+    try:
+        with pytest.raises(ValueError, match="outside the workspace"):
+            run_step(ledger, ws, lambda w: [], FileExistsVerifier())
+    finally:
+        ledger.close()

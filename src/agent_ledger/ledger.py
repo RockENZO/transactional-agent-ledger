@@ -35,7 +35,8 @@ class Ledger:
     """Stores claims about task state. Only COMMITTED claims count as done."""
 
     def __init__(self, path: str | Path = ":memory:") -> None:
-        self.path = str(path)
+        # Store an absolute path so later working-directory changes cannot move it.
+        self.path = ":memory:" if str(path) == ":memory:" else str(Path(path).resolve())
         self._db = sqlite3.connect(self.path)
         with self._db:
             self._db.execute(

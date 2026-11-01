@@ -37,14 +37,13 @@ def _restore(workspace: Path, snapshot: Path) -> None:
     shutil.copytree(snapshot, workspace, symlinks=True)
 
 
-def _check_ledger_outside(ledger: Ledger, workspace: Path) -> None:
-    if ledger.path == ":memory:":
-        return
-    db = Path(ledger.path).resolve()
-    if db.is_relative_to(workspace):
-        raise ValueError(
-            f"ledger database must live outside the workspace: {db}"
-        )
+def _check_outside(ledger: Ledger, workspace: Path) -> None:
+    """Refuse setups where the snapshot or the ledger would live inside the workspace."""
+    if ledger.path != ":memory:" and Path(ledger.path).is_relative_to(workspace):
+        raise ValueError(f"ledger database must live outside the workspace: {ledger.path}")
+    tmp = Path(tempfile.gettempdir()).resolve()
+    if tmp.is_relative_to(workspace):
+        raise ValueError(f"temporary directory must live outside the workspace: {tmp}")
 
 
 def run_step(
@@ -60,11 +59,16 @@ def run_step(
     claims produced by this step.
     """
     workspace = workspace.resolve()
-    _check_ledger_outside(ledger, workspace)
+    workspace_root = workspace
+    _check_outside(ledger, workspace)
 
     snapshot_root = Path(tempfile.mkdtemp(prefix="ledger-snap-"))
     snapshot = snapshot_root / "ws"
-    shutil.copytree(workspace, snapshot, symlinks=True)
+    try:
+        shutil.copytree(workspace, snapshot, symlinks=True)
+    except BaseException:
+        shutil.rmtree(snapshot_root, ignore_errors=True)
+        raise
     restored = False
     committed = False
     try:
@@ -75,14 +79,18 @@ def run_step(
         except Exception as exc:
             verdict = Verdict(False, f"step error: {exc}")
         else:
-            scoped = [
-                c for c in ledger.get_many(ids)
-                if verify_keys is None or c.key in verify_keys
-            ]
-            try:
-                verdict = verifier.check(workspace, scoped)
-            except Exception as exc:  # a crashing verifier is a failed verification
-                verdict = Verdict(False, f"verifier error: {exc}")
+            if workspace.is_symlink() or workspace.resolve() != workspace_root:
+                # The step replaced the workspace root; containment no longer holds.
+                verdict = Verdict(False, "workspace root was replaced")
+            else:
+                scoped = [
+                    c for c in ledger.get_many(ids)
+                    if verify_keys is None or c.key in verify_keys
+                ]
+                try:
+                    verdict = verifier.check(workspace, scoped)
+                except Exception as exc:  # a crashing verifier is a failed verification
+                    verdict = Verdict(False, f"verifier error: {exc}")
 
         if verdict.ok:
             ledger.finalize(ids, ClaimStatus.COMMITTED, verdict.reason)
