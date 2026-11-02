@@ -224,7 +224,9 @@ class CommandVerifier:
         try:
             if os.name == "posix":
                 os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):
+            # ESRCH on Linux. macOS answers EPERM when the only member of the group is the
+            # finished, not yet reaped command itself, so nothing is left to stop.
             pass
 
     def _tail(self, sink) -> str:
