@@ -3,6 +3,8 @@
 from agent_ledger.ledger import Claim, ClaimStatus, Ledger
 from agent_ledger.transaction import StepResult, run_step
 from agent_ledger.verifier import (
+    AllOf,
+    CommandVerifier,
     ExpectedStateVerifier,
     FileExistsVerifier,
     JsonFieldVerifier,
@@ -11,6 +13,8 @@ from agent_ledger.verifier import (
 )
 
 __all__ = [
+    "AllOf",
+    "CommandVerifier",
     "Claim",
     "ClaimStatus",
     "Ledger",

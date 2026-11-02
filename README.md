@@ -27,9 +27,30 @@ result = run_step(ledger, Path("workspace"), step, FileExistsVerifier())
 print(result.committed, result.verdict.reason)
 ```
 
+## Gating a coding agent on its tests
+
+```python
+import sys
+from pathlib import Path
+from agent_ledger import AllOf, CommandVerifier, ExpectedStateVerifier, Ledger, run_step
+
+verifier = AllOf(
+    CommandVerifier([sys.executable, "-m", "pytest", "-q"], timeout=300),
+    ExpectedStateVerifier({"tests/test_calc.py": TEST_FILE_TEXT}),  # the agent may not rewrite the tests
+)
+result = run_step(Ledger("task.db"), Path("workspace"), step, verifier)
+if not result.committed:
+    print(result.verdict.reason)  # the command's exit code and the tail of its output
+```
+
+A failing command restores the workspace and rejects the step's claims; the reason ends with the
+command's output, so it can be given back to the agent. The command is not sandboxed: only
+changes inside the workspace are rolled back, not network calls or files elsewhere. A verifier
+only checks what its command checks, which is why the example also pins the test file.
+
 ## Scope of this skeleton
 
-- Included: ledger, snapshot/restore transactions, file-existence and JSON-field verifiers, tests.
+- Included: ledger, snapshot/restore transactions, file-existence, JSON-field and expected-state verifiers, `CommandVerifier` (run a command such as the test suite), `AllOf`, tests.
 - Not included: model calls, a builder agent, the 20-task benchmark, model-based verifiers, trajectory-replay integration.
 - Snapshots copy the whole workspace. That is fine for small task sets, not for large trees.
 
