@@ -158,3 +158,35 @@ def test_memory_stays_bounded_for_noisy_commands(tmp_path: Path) -> None:
         tracemalloc.stop()
     assert not verdict.ok and verdict.reason.endswith("END")
     assert peak < 2 * 1024 * 1024, f"peak allocations {peak} bytes"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups")
+@pytest.mark.parametrize("exit_code", [0, 1])
+def test_background_children_are_stopped_when_the_command_exits(tmp_path: Path, exit_code: int) -> None:
+    """A command that leaves a child running must not let it write after the verdict."""
+    marker = tmp_path / "late-write"
+    child = f"import time; from pathlib import Path; time.sleep(1.0); Path({str(marker)!r}).write_text('x')"
+    parent = f"import subprocess, sys; subprocess.Popen([sys.executable, '-c', {child!r}]); sys.exit({exit_code})"
+    verdict = check(CommandVerifier(py(parent)), tmp_path)
+    assert verdict.ok == (exit_code == 0)
+    time.sleep(1.8)
+    assert not marker.exists(), "a background child outlived the verifier"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups")
+def test_a_surviving_child_cannot_undo_a_rollback(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "data.txt").write_text("original")
+    target = ws / "data.txt"
+    child = f"import time; from pathlib import Path; time.sleep(1.0); Path({str(target)!r}).write_text('overwritten')"
+    command = f"import subprocess, sys; subprocess.Popen([sys.executable, '-c', {child!r}]); sys.exit(1)"
+
+    def step(w: Path):
+        (w / "data.txt").write_text("changed by the step")
+        return [("edit", ["data.txt"], {})]
+
+    result = run_step(Ledger(), ws, step, CommandVerifier(py(command)))
+    assert not result.committed
+    time.sleep(1.8)
+    assert target.read_text() == "original"
