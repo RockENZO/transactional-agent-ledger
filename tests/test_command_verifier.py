@@ -190,3 +190,17 @@ def test_a_surviving_child_cannot_undo_a_rollback(tmp_path: Path) -> None:
     assert not result.committed
     time.sleep(1.8)
     assert target.read_text() == "original"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups")
+def test_eperm_from_killpg_on_a_finished_group_is_not_a_crash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """macOS returns EPERM, not ESRCH, for a group holding only the unreaped, finished command."""
+    real = os.killpg
+
+    def killpg(pgid: int, sig: int) -> None:
+        real(pgid, sig)
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "killpg", killpg)
+    assert check(CommandVerifier(py("pass")), tmp_path).ok
+    assert not check(CommandVerifier(py("import sys; sys.exit(2)")), tmp_path).ok
