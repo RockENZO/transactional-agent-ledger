@@ -1,6 +1,6 @@
 # transactional-agent-ledger
 
-Status: skeleton, pre-release. Part of the planned Design A from the frontier agent architecture proposal.
+Status: early (0.1), the API may still change. It is used as the optional completion gate (`--verify`) of [Odyssey](https://github.com/RockENZO/odyssey).
 
 A tool-using agent should not decide on its own that a task is done. This library keeps task claims in a ledger outside the model's context. Each agent step runs as a transaction on a workspace directory:
 
@@ -48,10 +48,11 @@ command's output, so it can be given back to the agent. The command is not sandb
 changes inside the workspace are rolled back, not network calls or files elsewhere. A verifier
 only checks what its command checks, which is why the example also pins the test file.
 
-## Scope of this skeleton
+## Scope
 
 - Included: ledger, snapshot/restore transactions, file-existence, JSON-field and expected-state verifiers, `CommandVerifier` (run a command such as the test suite), `AllOf`, tests.
-- Not included: model calls, a builder agent, the 20-task benchmark, model-based verifiers, trajectory-replay integration.
+- Also included: a 20-task file-operations set with a scripted harness self-test ([benchmarks/file_ops](benchmarks/file_ops/README.md)). It runs no language model, so it shows that the ledger commits correct work and rejects false completions, not how often a model succeeds.
+- Not included: model calls, a builder agent, model-based verifiers.
 - Snapshots copy the whole workspace. That is fine for small task sets, not for large trees.
 
 ## Tests
