@@ -252,6 +252,11 @@ class CommandVerifier:
             process.wait()
 
 
+def _canon(value: object) -> str:
+    """Type-aware form for comparing JSON values. Python's == treats True as 1 and False as 0."""
+    return json.dumps(value, sort_keys=True, allow_nan=False)
+
+
 class CassetteVerifier:
     """Passes when the step's tool-call claims match a recorded cassette, in order.
 
@@ -290,7 +295,7 @@ class CassetteVerifier:
             )
         for index, (claim, (name, arguments, call_id)) in enumerate(zip(observed, self._expected)):
             value = claim.value if isinstance(claim.value, dict) else {}
-            if value.get("name") != name or value.get("arguments") != arguments:
+            if value.get("name") != name or _canon(value.get("arguments")) != _canon(arguments):
                 return Verdict(
                     False,
                     f"call {index}: expected {name}{arguments}, "

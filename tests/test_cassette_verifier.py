@@ -104,3 +104,17 @@ def test_cassette_must_be_a_list_of_calls(tmp_path: Path) -> None:
         assert "JSON list" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_booleans_and_numbers_are_not_interchangeable(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cassette = _cassette(tmp_path, [
+        {"name": "set", "arguments": {"enabled": True}, "result": "ok", "error": None},
+    ])
+    as_number = run_step(Ledger(), ws, _step([("set", {"enabled": 1}, None)]), CassetteVerifier(cassette))
+    as_zero = run_step(Ledger(), ws, _step([("set", {"enabled": False}, None)]), CassetteVerifier(cassette))
+    as_true = run_step(Ledger(), ws, _step([("set", {"enabled": True}, None)]), CassetteVerifier(cassette))
+    assert not as_number.committed
+    assert not as_zero.committed
+    assert as_true.committed
