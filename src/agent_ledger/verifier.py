@@ -250,3 +250,53 @@ class CommandVerifier:
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
+
+
+class CassetteVerifier:
+    """Passes when the step's tool-call claims match a recorded cassette, in order.
+
+    The cassette is a JSON list of ``{"name", "arguments", ...}`` objects, the format written by
+    ``trajectory_replay.save``. Only ``name`` and ``arguments`` are compared, and ``call_id`` when
+    both the cassette and the claim provide one. Results are not compared here.
+
+    Each tool-call claim has key ``tool_call`` and value ``{"name": ..., "arguments": {...}}``.
+    The verifier fails when the claims differ from the cassette in count, order, name or arguments.
+
+    The cassette is loaded when the verifier is created, not at check time, so an agent
+    cannot change it during the step. Keep the cassette file outside the workspace.
+    """
+
+    KEY = "tool_call"
+
+    def __init__(self, cassette_path: str | Path) -> None:
+        data = json.loads(Path(cassette_path).read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            raise ValueError("cassette must be a JSON list of tool calls")
+        self._expected = [self._normalize(item) for item in data]
+
+    @staticmethod
+    def _normalize(item: object) -> tuple[str, object, str | None]:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            raise ValueError(f"cassette item is not a tool call: {item!r}")
+        call_id = item.get("call_id")
+        return item["name"], item.get("arguments", {}), call_id if isinstance(call_id, str) else None
+
+    def check(self, workspace: Path, claims: list[Claim]) -> Verdict:
+        observed = [c for c in claims if c.key == self.KEY]
+        if len(observed) != len(self._expected):
+            return Verdict(
+                False,
+                f"expected {len(self._expected)} tool calls, got {len(observed)}",
+            )
+        for index, (claim, (name, arguments, call_id)) in enumerate(zip(observed, self._expected)):
+            value = claim.value if isinstance(claim.value, dict) else {}
+            if value.get("name") != name or value.get("arguments") != arguments:
+                return Verdict(
+                    False,
+                    f"call {index}: expected {name}{arguments}, "
+                    f"got {value.get('name')}{value.get('arguments')}",
+                )
+            got_id = claim.provenance.get("call_id") if isinstance(claim.provenance, dict) else None
+            if call_id is not None and got_id is not None and got_id != call_id:
+                return Verdict(False, f"call {index}: call_id {got_id!r}, expected {call_id!r}")
+        return Verdict(True, f"{len(observed)} tool calls match cassette")

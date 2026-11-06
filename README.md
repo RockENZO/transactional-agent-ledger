@@ -27,6 +27,15 @@ result = run_step(ledger, Path("workspace"), step, FileExistsVerifier())
 print(result.committed, result.verdict.reason)
 ```
 
+## Gating on a recorded tool trajectory
+
+`CassetteVerifier` passes a step only when its tool-call claims match a recorded cassette, in order, by name and arguments. Use a claim with key `tool_call`, value `{"name", "arguments"}`, and optional provenance `call_id`. The cassette is the JSON list written by `trajectory_replay.save`. It is read when the verifier is created, so keep it outside the workspace. Results are not compared.
+
+```python
+from agent_ledger import CassetteVerifier
+verifier = CassetteVerifier("cassettes/task-01.json")
+```
+
 ## Gating a coding agent on its tests
 
 ```python
