@@ -36,6 +36,15 @@ pip install -e ".[dev,langgraph]"
 PYTHONPATH=src python -m pytest -q tests/test_langgraph_agent.py
 ```
 
+## LangGraph supervisor with a writer and a reviewer
+
+`examples/langgraph_supervisor.py` is a LangGraph graph with a routing function that sends work between two workers. The writer's write is a ledger transaction. A failed verification rolls back and is recorded, and the writer tries its next draft, up to a limit. Once a write is committed, the reviewer reads the file back and checks it. The routing rule is fixed, so the example runs offline. A real supervisor would make the same decision with an LLM.
+
+```bash
+pip install -e ".[dev,langgraph]"
+PYTHONPATH=src python -m pytest -q tests/test_langgraph_supervisor.py
+```
+
 ## CrewAI crew with ledger-guarded writes
 
 `examples/crewai_agents.py` runs a two-agent CrewAI crew. The writer's `write_file` tool runs each write through `run_step`, so a write is committed only if its verifier passes. A rejected write is rolled back and returned to the agent as the tool result, so the agent can retry. A path that escapes the workspace is rejected the same way.
