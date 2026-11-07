@@ -36,6 +36,17 @@ pip install -e ".[dev,langgraph]"
 PYTHONPATH=src python -m pytest -q tests/test_langgraph_agent.py
 ```
 
+## CrewAI crew with ledger-guarded writes
+
+`examples/crewai_agents.py` runs a two-agent CrewAI crew. The writer's `write_file` tool runs each write through `run_step`, so a write is committed only if its verifier passes. A rejected write is rolled back and returned to the agent as the tool result, so the agent can retry. A path that escapes the workspace is rejected the same way.
+
+The model is a scripted `BaseLLM` that replays fixed ReAct responses, so the example runs offline. It does not call a real model. Tool writes are serialized with a lock, because CrewAI runs tools on worker threads. `Ledger` is created with `check_same_thread=False` for the same reason. Callers must still not use one ledger from two threads at once.
+
+```bash
+pip install -e ".[dev,crewai]"
+PYTHONPATH=src python -m pytest -q tests/test_crewai_agents.py
+```
+
 ## Gating on a recorded tool trajectory
 
 `CassetteVerifier` passes a step only when its tool-call claims match a recorded cassette, in order, by name and arguments. Use a claim with key `tool_call`, value `{"name", "arguments"}`, and optional provenance `call_id`. The cassette is the JSON list written by `trajectory_replay.save`. It is read when the verifier is created, so keep it outside the workspace. Results are not compared.
