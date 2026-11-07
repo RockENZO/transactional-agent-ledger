@@ -46,7 +46,10 @@ def build_graph(
         text = drafts[state["attempts"]] if state["attempts"] < len(drafts) else ""
 
         def step(w: Path):
-            target = w / path
+            # Resolve first: an absolute path, "..", or a symlink can point outside the workspace.
+            target = (w / path).resolve()
+            if not target.is_relative_to(w):
+                raise ValueError(f"path escapes workspace: {path}")
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text, encoding="utf-8")
             return [("file", [path], {"worker": "writer", "attempt": state["attempts"]})]

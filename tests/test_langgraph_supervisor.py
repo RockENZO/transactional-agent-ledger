@@ -46,3 +46,15 @@ def test_supervisor_gives_up_after_max_attempts_and_does_not_review(tmp_path: Pa
     assert not final["reviewed"]
     assert len(final["rejections"]) == 3
     assert ledger.committed() == []
+
+
+def test_path_outside_the_workspace_is_refused_and_leaves_the_file_alone(tmp_path: Path) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("original", encoding="utf-8")
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    final, _ledger = example.run(ws, path="../outside.txt", expected="12.50", drafts=["12.50"],
+                                 ledger=Ledger(), max_attempts=2)
+    assert outside.read_text(encoding="utf-8") == "original"
+    assert not final["committed"]
+    assert final["rejections"]
