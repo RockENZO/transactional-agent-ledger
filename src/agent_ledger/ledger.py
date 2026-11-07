@@ -37,7 +37,9 @@ class Ledger:
     def __init__(self, path: str | Path = ":memory:") -> None:
         # Store an absolute path so later working-directory changes cannot move it.
         self.path = ":memory:" if str(path) == ":memory:" else str(Path(path).resolve())
-        self._db = sqlite3.connect(self.path)
+        # Frameworks such as CrewAI run tools on worker threads. The caller must serialize
+        # access to one Ledger: run_step is not safe to call from two threads at once.
+        self._db = sqlite3.connect(self.path, check_same_thread=False)
         with self._db:
             self._db.execute(
                 """
